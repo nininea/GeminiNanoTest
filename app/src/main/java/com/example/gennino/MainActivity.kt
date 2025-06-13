@@ -19,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +38,8 @@ import com.google.mlkit.genai.imagedescription.ImageDescriber
 import com.google.mlkit.genai.imagedescription.ImageDescriberOptions
 import com.google.mlkit.genai.imagedescription.ImageDescription
 import com.google.mlkit.genai.imagedescription.ImageDescriptionRequest
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
 
@@ -44,7 +47,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var options: ImageDescriberOptions
     private lateinit var imageDescriber: ImageDescriber
-
+    private val imageDescription = MutableStateFlow("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,11 +64,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             GenNinoTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    GetImageFromGallery(modifier = Modifier.padding(innerPadding)) { uri ->
-                        val data = loadBitmapFromUri(uri)
-                        lifecycleScope.launch {
-                            prepareAndStartImageDescription(bitmap = data)
+                    Column {
+                        GetImageFromGallery(modifier = Modifier.padding(innerPadding)) { uri ->
+                            val data = loadBitmapFromUri(uri)
+                            lifecycleScope.launch {
+                                prepareAndStartImageDescription(bitmap = data)
+                            }
                         }
+                        Text("Description: ")
+                        Text(imageDescription.collectAsState().value)
                     }
                 }
             }
@@ -111,9 +118,11 @@ class MainActivity : ComponentActivity() {
                     }
                 })
             }
+
             FeatureStatus.AVAILABLE -> {
                 startImageDescriptionRequest(bitmap, imageDescriber)
             }
+
             FeatureStatus.DOWNLOADING -> {
                 // Handle the case where the feature is unavailable
                 startImageDescriptionRequest(bitmap, imageDescriber)
@@ -134,16 +143,15 @@ class MainActivity : ComponentActivity() {
             .builder(bitmap)
             .build()
 
+        // clear old description
+        imageDescription.value = ""
+
         imageDescriber.runInference(imageDescriptionRequest) { outputText ->
             // Append new output text to show in UI
             // This callback is called incrementally as the description
             // is generated
             println(outputText)
-            Toast.makeText(
-                this,
-                "Image Description: $outputText",
-                Toast.LENGTH_LONG
-            ).show()
+            imageDescription.update { it + outputText }
         }
 
         imageDescriber.close()
@@ -168,7 +176,6 @@ fun GetImageFromGallery(
 
     Column(
         modifier = modifier
-            .fillMaxSize()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
